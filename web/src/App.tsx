@@ -32,6 +32,7 @@ export const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('wiper');
   const [zoom, setZoom] = useState<number>(1);
   const [highlightBox, setHighlightBox] = useState<boolean>(true);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
 
   // Modals state
   const [isMaskModalOpen, setIsMaskModalOpen] = useState(false);
@@ -145,16 +146,20 @@ export const App: React.FC = () => {
         onApproveAll={approveAll}
         running={running}
         approving={approving}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
       />
 
       {/* Main Body Layout */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
         {/* Left Sidebar */}
         <SnapshotList
           snapshots={snapshots}
           selectedId={selectedId}
           onSelect={setSelectedId}
           filter={filter}
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
         />
 
         {/* Center Canvas */}

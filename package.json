@@ -50,6 +50,7 @@
     "pngjs": "^7.0.0"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^22.13.10",
     "@types/pixelmatch": "^5.2.6",
     "@types/pngjs": "^6.0.5",

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, CheckCheck, RefreshCw, GitBranch, ShieldAlert } from 'lucide-react';
+import { Play, CheckCheck, RefreshCw, GitBranch, ShieldAlert, Menu, X } from 'lucide-react';
 import type { RunManifest } from '../types.js';
 
 interface HeaderProps {
@@ -10,6 +10,8 @@ interface HeaderProps {
   onApproveAll: () => void;
   running: boolean;
   approving: boolean;
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,24 +21,35 @@ export const Header: React.FC<HeaderProps> = ({
   onRunTests,
   onApproveAll,
   running,
-  approving
+  approving,
+  sidebarOpen,
+  onToggleSidebar
 }) => {
   const summary = manifest?.summary ?? { total: 0, passed: 0, failed: 0, newBaselines: 0 };
   const hasChangesToApprove = summary.failed > 0 || summary.newBaselines > 0;
 
   return (
-    <header className="h-14 border-b border-slate-800 bg-slate-900/80 backdrop-blur px-4 flex items-center justify-between shrink-0">
-      <div className="flex items-center gap-4">
+    <header className="h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur px-3 md:px-4 flex items-center justify-between shrink-0 z-30">
+      <div className="flex items-center gap-2 md:gap-4">
+        {/* Mobile Sidebar Toggle Button */}
+        <button
+          onClick={onToggleSidebar}
+          className="p-1.5 rounded-lg text-slate-400 hover:text-white bg-slate-800/80 md:hidden border border-slate-700/60"
+          title="Toggle Snapshot Drawer"
+        >
+          {sidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+        </button>
+
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center font-bold text-white text-sm shadow-md shadow-indigo-500/20">
             S
           </div>
-          <span className="font-bold text-base tracking-tight text-white">SnapDiff</span>
-          <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-medium">Studio</span>
+          <span className="font-bold text-base tracking-tight text-white hidden sm:inline">SnapDiff</span>
+          <span className="text-xs px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-medium hidden sm:inline">Studio</span>
         </div>
 
         {manifest?.git && (
-          <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-400 bg-slate-800/60 px-2.5 py-1 rounded-full border border-slate-700/50">
+          <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-400 bg-slate-800/60 px-2.5 py-1 rounded-full border border-slate-700/50">
             <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
             <span className="font-mono text-slate-300">{manifest.git.branch || 'main'}</span>
             {manifest.git.commit && (
@@ -49,11 +62,11 @@ export const Header: React.FC<HeaderProps> = ({
         )}
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex items-center bg-slate-950/60 p-1 rounded-lg border border-slate-800/80 text-xs">
+      {/* Filter Tabs (Horizontal scroll on very small screens) */}
+      <div className="flex items-center bg-slate-950/70 p-1 rounded-lg border border-slate-800/80 text-xs overflow-x-auto max-w-[260px] sm:max-w-none">
         <button
           onClick={() => onFilterChange('all')}
-          className={`px-3 py-1 rounded-md transition font-medium ${
+          className={`px-2.5 py-1 rounded-md transition font-medium whitespace-nowrap ${
             filter === 'all'
               ? 'bg-slate-800 text-white shadow-sm'
               : 'text-slate-400 hover:text-slate-200'
@@ -63,7 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
         <button
           onClick={() => onFilterChange('failed')}
-          className={`px-3 py-1 rounded-md transition font-medium flex items-center gap-1 ${
+          className={`px-2 py-1 rounded-md transition font-medium whitespace-nowrap flex items-center gap-1 ${
             filter === 'failed'
               ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
               : 'text-slate-400 hover:text-rose-300'
@@ -74,7 +87,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
         <button
           onClick={() => onFilterChange('passed')}
-          className={`px-3 py-1 rounded-md transition font-medium ${
+          className={`px-2 py-1 rounded-md transition font-medium whitespace-nowrap ${
             filter === 'passed'
               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
               : 'text-slate-400 hover:text-emerald-300'
@@ -84,7 +97,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
         <button
           onClick={() => onFilterChange('new')}
-          className={`px-3 py-1 rounded-md transition font-medium ${
+          className={`px-2 py-1 rounded-md transition font-medium whitespace-nowrap ${
             filter === 'new'
               ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
               : 'text-slate-400 hover:text-cyan-300'
@@ -95,27 +108,27 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 md:gap-2">
         <button
           onClick={onRunTests}
           disabled={running}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition border border-slate-700/60 disabled:opacity-50"
+          className="flex items-center gap-1 md:gap-1.5 px-2.5 md:px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition border border-slate-700/60 disabled:opacity-50"
         >
           {running ? (
             <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
           ) : (
             <Play className="w-3.5 h-3.5 text-cyan-400" />
           )}
-          <span>{running ? 'Running...' : 'Run Test'}</span>
+          <span className="hidden sm:inline">{running ? 'Running...' : 'Run Test'}</span>
         </button>
 
         <button
           onClick={onApproveAll}
           disabled={approving || !hasChangesToApprove}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-sm shadow-emerald-900/30 disabled:opacity-40 disabled:hover:bg-emerald-600"
+          className="flex items-center gap-1 md:gap-1.5 px-2.5 md:px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-sm shadow-emerald-900/30 disabled:opacity-40"
         >
           <CheckCheck className="w-3.5 h-3.5" />
-          <span>{approving ? 'Approving...' : 'Approve All Changed'}</span>
+          <span className="hidden sm:inline">{approving ? 'Approving...' : 'Approve All'}</span>
         </button>
       </div>
     </header>
