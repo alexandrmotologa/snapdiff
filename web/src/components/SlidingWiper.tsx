@@ -4,12 +4,16 @@ interface SlidingWiperProps {
   baselineUrl: string;
   currentUrl: string;
   zoom: number;
+  highlightBox?: boolean;
+  boundingBox?: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
 export const SlidingWiper: React.FC<SlidingWiperProps> = ({
   baselineUrl,
   currentUrl,
-  zoom
+  zoom,
+  highlightBox,
+  boundingBox
 }) => {
   const [sliderPos, setSliderPos] = useState(50); // percentage (0 - 100)
   const [isDragging, setIsDragging] = useState(false);
@@ -54,7 +58,7 @@ export const SlidingWiper: React.FC<SlidingWiperProps> = ({
   }, [isDragging, handleMove]);
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center overflow-auto p-4 select-none">
+    <div id="canvas-scroll-container" className="relative w-full h-full flex items-center justify-center overflow-auto p-4 select-none">
       <div
         ref={containerRef}
         onClick={(e) => handleMove(e.clientX)}
@@ -86,6 +90,23 @@ export const SlidingWiper: React.FC<SlidingWiperProps> = ({
             draggable={false}
           />
         </div>
+
+        {/* Bounding box highlight */}
+        {highlightBox && boundingBox && (
+          <div
+            className="absolute border-2 border-dashed border-[#ff00ff] bg-[#ff00ff]/15 pointer-events-none animate-pulse shadow-[0_0_15px_rgba(255,0,255,0.5)] z-20"
+            style={{
+              left: `${boundingBox.minX}px`,
+              top: `${boundingBox.minY}px`,
+              width: `${boundingBox.maxX - boundingBox.minX}px`,
+              height: `${boundingBox.maxY - boundingBox.minY}px`
+            }}
+          >
+            <span className="absolute -top-5 left-0 text-[10px] bg-[#ff00ff] text-white font-bold px-1.5 py-0.5 rounded shadow">
+              Diff
+            </span>
+          </div>
+        )}
 
         {/* Vertical Divider Line */}
         <div

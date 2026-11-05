@@ -1,3 +1,5 @@
+export type ColorScheme = 'light' | 'dark';
+
 export interface ViewportConfig {
   width: number;
   height: number;
@@ -29,6 +31,7 @@ export interface SnapshotRecord {
   targetName: string;
   url: string;
   viewportName: string;
+  colorScheme: ColorScheme;
   viewport: ViewportConfig;
   status: SnapshotStatus;
   baselinePath?: string;
@@ -37,6 +40,14 @@ export interface SnapshotRecord {
   metrics?: DiffMetrics;
   error?: string;
   updatedAt: string;
+}
+
+export interface HistoryRecord {
+  targetName: string;
+  viewportName: string;
+  colorScheme: ColorScheme;
+  timestamp: string;
+  filePath: string;
 }
 
 export interface RunManifest {
@@ -58,4 +69,4 @@ export interface RunManifest {
   snapshots: SnapshotRecord[];
 }
 
-export type ViewMode = 'wiper' | 'onion' | 'side-by-side' | 'diff';
+export type ViewMode = 'wiper' | 'onion' | 'side-by-side' | 'diff' | 'blink';

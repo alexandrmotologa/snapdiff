@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import type { BaselineStore } from './store.js';
-import type { SnapshotRecord } from '../types.js';
+import type { ColorScheme } from '../types.js';
 
 export interface ApprovalResult {
   success: boolean;
@@ -15,18 +15,21 @@ export interface ApprovalResult {
 export async function approveSnapshot(
   store: BaselineStore,
   targetName: string,
-  viewportName: string
+  viewportName: string,
+  colorScheme: ColorScheme = 'light'
 ): Promise<boolean> {
-  const currentBuffer = await store.readCurrent(targetName, viewportName);
+  const currentBuffer = await store.readCurrent(targetName, viewportName, colorScheme);
   if (!currentBuffer) {
-    throw new Error(`Current snapshot not found for target "${targetName}" and viewport "${viewportName}"`);
+    throw new Error(
+      `Current snapshot not found for target "${targetName}", viewport "${viewportName}" [${colorScheme}]`
+    );
   }
 
-  // Save buffer to baseline
-  await store.saveBaseline(targetName, viewportName, currentBuffer);
+  // Save buffer to baseline (store automatically archives previous baseline to history)
+  await store.saveBaseline(targetName, viewportName, currentBuffer, colorScheme);
 
   // Remove diff image if present
-  const diffPath = store.getDiffPath(targetName, viewportName);
+  const diffPath = store.getDiffPath(targetName, viewportName, colorScheme);
   if (fs.existsSync(diffPath)) {
     try {
       await fs.promises.unlink(diffPath);
@@ -39,13 +42,16 @@ export async function approveSnapshot(
   const manifest = store.loadManifest();
   if (manifest) {
     const snap = manifest.snapshots.find(
-      (s) => s.targetName === targetName && s.viewportName === viewportName
+      (s) =>
+        s.targetName === targetName &&
+        s.viewportName === viewportName &&
+        (s.colorScheme ?? 'light') === colorScheme
     );
 
     if (snap) {
       const prevStatus = snap.status;
       snap.status = 'passed';
-      snap.baselinePath = store.getBaselinePath(targetName, viewportName);
+      snap.baselinePath = store.getBaselinePath(targetName, viewportName, colorScheme);
       snap.diffPath = undefined;
       if (snap.metrics) {
         snap.metrics.mismatchedPixels = 0;
@@ -90,9 +96,9 @@ export async function approveAllSnapshots(store: BaselineStore): Promise<Approva
   for (const snap of manifest.snapshots) {
     if (snap.status === 'failed' || snap.status === 'new_baseline') {
       try {
-        await approveSnapshot(store, snap.targetName, snap.viewportName);
-        approvedSnapshots.push(`${snap.targetName} [${snap.viewportName}]`);
-      } catch (err) {
+        await approveSnapshot(store, snap.targetName, snap.viewportName, snap.colorScheme || 'light');
+        approvedSnapshots.push(`${snap.targetName} [${snap.viewportName}:${snap.colorScheme || 'light'}]`);
+      } catch {
         // Continue with others
       }
     }

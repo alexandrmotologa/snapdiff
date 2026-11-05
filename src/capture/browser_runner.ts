@@ -1,12 +1,21 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-import type { ViewportConfig, WaitOptions } from '../types.js';
+import type {
+  AuthOptions,
+  ColorScheme,
+  PreCaptureAction,
+  ViewportConfig,
+  WaitOptions
+} from '../types.js';
 import { injectStabilizationAndMasks } from './mask_injector.js';
 import { waitForPageReady } from './wait_strategy.js';
 
 export interface CaptureOptions {
   viewport: ViewportConfig;
+  colorScheme?: ColorScheme;
   selector?: string;
   masks?: string[];
+  actions?: PreCaptureAction[];
+  auth?: AuthOptions;
   wait?: WaitOptions;
   stabilize?: boolean;
 }
@@ -55,14 +64,106 @@ export class BrowserRunner {
   }
 
   /**
-   * Captures a screenshot of the specified URL across a given viewport.
+   * Executes pre-capture interaction actions (clicks, hovers, inputs, waits).
+   */
+  private async executeActions(page: Page, actions: PreCaptureAction[]): Promise<void> {
+    for (const action of actions) {
+      switch (action.type) {
+        case 'click': {
+          await page.waitForSelector(action.selector, { timeout: action.timeout ?? 5000 });
+          await page.click(action.selector);
+          break;
+        }
+        case 'hover': {
+          await page.waitForSelector(action.selector, { timeout: action.timeout ?? 5000 });
+          await page.hover(action.selector);
+          break;
+        }
+        case 'fill': {
+          await page.waitForSelector(action.selector, { timeout: action.timeout ?? 5000 });
+          await page.fill(action.selector, action.value);
+          break;
+        }
+        case 'wait': {
+          if (action.selector) {
+            await page.waitForSelector(action.selector, { timeout: action.timeout ?? 5000 });
+          }
+          if (action.ms) {
+            await page.waitForTimeout(action.ms);
+          }
+          break;
+        }
+        case 'evaluate': {
+          await page.evaluate(action.script);
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * Injects authentication tokens, cookies, and local storage into the page context.
+   */
+  private async applyAuth(context: BrowserContext, page: Page, auth?: AuthOptions): Promise<void> {
+    if (!auth) return;
+
+    // Apply custom headers
+    if (auth.headers && Object.keys(auth.headers).length > 0) {
+      await page.setExtraHTTPHeaders(auth.headers);
+    }
+
+    // Apply cookies
+    if (auth.cookies && auth.cookies.length > 0) {
+      await context.addCookies(
+        auth.cookies.map((c) => ({
+          name: c.name,
+          value: c.value,
+          domain: c.domain ?? 'localhost',
+          path: c.path ?? '/',
+          httpOnly: c.httpOnly ?? false,
+          secure: c.secure ?? false
+        }))
+      );
+    }
+
+    // Apply localStorage & sessionStorage
+    if (auth.localStorage || auth.sessionStorage) {
+      await page.addInitScript(
+        ({ local, session }) => {
+          if (local) {
+            for (const [k, v] of Object.entries(local)) {
+              window.localStorage.setItem(k, v);
+            }
+          }
+          if (session) {
+            for (const [k, v] of Object.entries(session)) {
+              window.sessionStorage.setItem(k, v);
+            }
+          }
+        },
+        { local: auth.localStorage, session: auth.sessionStorage }
+      );
+    }
+  }
+
+  /**
+   * Captures a screenshot of the specified URL across a given viewport and color scheme.
    */
   async capture(url: string, options: CaptureOptions): Promise<CaptureResult> {
     if (!this.browser) {
       await this.init();
     }
 
-    const { viewport, selector, masks = [], wait = {}, stabilize = true } = options;
+    const {
+      viewport,
+      colorScheme = 'light',
+      selector,
+      masks = [],
+      actions = [],
+      auth,
+      wait = {},
+      stabilize = true
+    } = options;
 
     const context: BrowserContext = await this.browser!.newContext({
       viewport: {
@@ -72,19 +173,28 @@ export class BrowserRunner {
       deviceScaleFactor: viewport.deviceScaleFactor ?? 1,
       isMobile: viewport.isMobile ?? false,
       hasTouch: viewport.hasTouch ?? false,
-      colorScheme: 'light',
+      colorScheme,
       reducedMotion: 'reduce'
     });
 
     const page: Page = await context.newPage();
 
     try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: wait.timeout ?? 20000 });
+      // 1. Inject Auth (cookies, headers, storage init scripts)
+      await this.applyAuth(context, page, auth);
 
-      // Apply dynamic masks and stabilization CSS
+      // 2. Navigate to target URL
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: wait.timeout ?? 25000 });
+
+      // 3. Apply dynamic masks and stabilization CSS
       await injectStabilizationAndMasks(page, masks, stabilize);
 
-      // Wait for page to stabilize (fonts, lazy load scroll, delay)
+      // 4. Execute pre-capture actions (modal open, tab click, hover, form fill)
+      if (actions.length > 0) {
+        await this.executeActions(page, actions);
+      }
+
+      // 5. Wait for page to stabilize (fonts, lazy load scroll, delay)
       await waitForPageReady(page, wait);
 
       let buffer: Buffer;

@@ -15,4 +15,5 @@ export * from './server/api.js';
 export * from './reporter/terminal_table.js';
 export * from './reporter/pr_commenter.js';
 export * from './reporter/html_report.js';
+export * from './reporter/webhook.js';
 export * from './demo/demo_server.js';

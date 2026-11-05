@@ -7,7 +7,11 @@ import {
   ZoomOut,
   RotateCcw,
   Check,
-  SplitSquareVertical
+  SplitSquareVertical,
+  Activity,
+  Focus,
+  EyeOff,
+  History
 } from 'lucide-react';
 import type { SnapshotRecord, ViewMode } from '../types.js';
 
@@ -17,6 +21,11 @@ interface InspectionBarProps {
   onViewModeChange: (m: ViewMode) => void;
   zoom: number;
   onZoomChange: (z: number) => void;
+  highlightBox: boolean;
+  onToggleHighlightBox: () => void;
+  onJumpToDiff: () => void;
+  onOpenMaskModal: () => void;
+  onOpenHistoryModal: () => void;
   onApprove: () => void;
   approving: boolean;
 }
@@ -27,13 +36,17 @@ export const InspectionBar: React.FC<InspectionBarProps> = ({
   onViewModeChange,
   zoom,
   onZoomChange,
+  highlightBox,
+  onToggleHighlightBox,
+  onJumpToDiff,
+  onOpenMaskModal,
+  onOpenHistoryModal,
   onApprove,
   approving
 }) => {
   const diffPct = snapshot.metrics ? `${snapshot.metrics.diffPercentage.toFixed(2)}%` : '0.00%';
   const threshPct = snapshot.metrics ? `${(snapshot.metrics.threshold * 100).toFixed(2)}%` : '0.20%';
-  const mismatched = snapshot.metrics?.mismatchedPixels?.toLocaleString() ?? '0';
-  const total = snapshot.metrics?.totalPixels?.toLocaleString() ?? '0';
+  const hasDiffBox = !!snapshot.metrics?.boundingBox;
 
   return (
     <div className="h-14 border-t border-slate-800 bg-slate-900/90 backdrop-blur px-4 flex items-center justify-between shrink-0 select-none text-xs">
@@ -46,10 +59,10 @@ export const InspectionBar: React.FC<InspectionBarProps> = ({
               ? 'bg-indigo-600 text-white shadow-sm'
               : 'text-slate-400 hover:text-slate-200'
           }`}
-          title="Shortcut: Press 1"
+          title="Sliding Wiper (Key 1)"
         >
           <SplitSquareVertical className="w-3.5 h-3.5" />
-          <span>Sliding Wiper</span>
+          <span>Wiper</span>
         </button>
 
         <button
@@ -59,10 +72,23 @@ export const InspectionBar: React.FC<InspectionBarProps> = ({
               ? 'bg-indigo-600 text-white shadow-sm'
               : 'text-slate-400 hover:text-slate-200'
           }`}
-          title="Shortcut: Press 2"
+          title="Onion Skin (Key 2)"
         >
           <Layers className="w-3.5 h-3.5" />
-          <span>Onion Skin</span>
+          <span>Onion</span>
+        </button>
+
+        <button
+          onClick={() => onViewModeChange('blink')}
+          className={`px-2.5 py-1 rounded flex items-center gap-1.5 transition font-medium ${
+            viewMode === 'blink'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+          title="Blink Comparator (Key 5)"
+        >
+          <Activity className="w-3.5 h-3.5 text-amber-400" />
+          <span>Blink</span>
         </button>
 
         <button
@@ -72,7 +98,7 @@ export const InspectionBar: React.FC<InspectionBarProps> = ({
               ? 'bg-indigo-600 text-white shadow-sm'
               : 'text-slate-400 hover:text-slate-200'
           }`}
-          title="Shortcut: Press 3"
+          title="Side-by-Side (Key 3)"
         >
           <Columns className="w-3.5 h-3.5" />
           <span>Side-by-Side</span>
@@ -85,7 +111,7 @@ export const InspectionBar: React.FC<InspectionBarProps> = ({
               ? 'bg-indigo-600 text-white shadow-sm'
               : 'text-slate-400 hover:text-slate-200'
           }`}
-          title="Shortcut: Press 4"
+          title="Difference Mask (Key 4)"
         >
           <Sparkles className="w-3.5 h-3.5 text-[#ff00ff]" />
           <span>Diff Mask</span>
@@ -101,21 +127,48 @@ export const InspectionBar: React.FC<InspectionBarProps> = ({
           </span>
           <span className="text-slate-600"> / max {threshPct}</span>
         </div>
-
-        <div>
-          <span className="text-slate-500">Mismatched: </span>
-          <span className="text-slate-200">{mismatched}</span>
-          <span className="text-slate-600"> of {total} px</span>
-        </div>
-
-        {snapshot.metrics?.boundingBox && (
-          <div>
-            <span className="text-slate-500">Box: </span>
-            <span className="text-slate-300">
-              [{snapshot.metrics.boundingBox.minX},{snapshot.metrics.boundingBox.minY} &rarr; {snapshot.metrics.boundingBox.maxX},{snapshot.metrics.boundingBox.maxY}]
-            </span>
-          </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {hasDiffBox && (
+          <button
+            onClick={onJumpToDiff}
+            className="flex items-center gap-1 px-2.5 py-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded font-medium transition"
+            title="Focus and zoom directly on the difference (Key J)"
+          >
+            <Focus className="w-3.5 h-3.5" />
+            <span>Jump to Diff</span>
+          </button>
         )}
+
+        <button
+          onClick={onToggleHighlightBox}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded font-medium transition border ${
+            highlightBox
+              ? 'bg-[#ff00ff]/20 text-fuchsia-300 border-[#ff00ff]/40'
+              : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+          }`}
+          title="Toggle glowing bounding box (Key H)"
+        >
+          <span>Highlight Box</span>
+        </button>
+
+        <button
+          onClick={onOpenMaskModal}
+          className="flex items-center gap-1 px-2.5 py-1 bg-slate-950 hover:bg-slate-850 text-slate-300 border border-slate-800 rounded font-medium transition"
+          title="Add ignore mask to configuration"
+        >
+          <EyeOff className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Add Mask</span>
+        </button>
+
+        <button
+          onClick={onOpenHistoryModal}
+          className="flex items-center gap-1 px-2.5 py-1 bg-slate-950 hover:bg-slate-850 text-slate-300 border border-slate-800 rounded font-medium transition"
+          title="View baseline history and rollback"
+        >
+          <History className="w-3.5 h-3.5 text-indigo-400" />
+          <span>History</span>
+        </button>
       </div>
 
       {/* Zoom and Approval Actions */}

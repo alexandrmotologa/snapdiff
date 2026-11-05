@@ -1,17 +1,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { ResolvedSnapDiffConfig, SnapDiffConfig } from './types.js';
+import type { ResolvedSnapDiffConfig, SnapDiffConfig, WebhookConfig } from './types.js';
 import { DEFAULT_VIEWPORTS } from './capture/viewport_config.js';
 
 export const DEFAULT_CONFIG: ResolvedSnapDiffConfig = {
   threshold: 0.002, // 0.2%
   diffColor: [255, 0, 255], // Bright magenta
   viewports: DEFAULT_VIEWPORTS,
+  colorSchemes: ['light'],
   targets: [],
   outputDir: '.snapdiff',
   headless: true,
-  stabilize: true
+  stabilize: true,
+  concurrency: 4
 };
 
 /**
@@ -60,6 +62,23 @@ export function findConfigFile(cwd = process.cwd(), customPath?: string): string
 }
 
 /**
+ * Normalizes webhook configuration.
+ */
+export function resolveWebhookConfig(val?: WebhookConfig | string): WebhookConfig | undefined {
+  if (!val) return undefined;
+  if (typeof val === 'string') {
+    const isDiscord = val.includes('discord.com');
+    const isSlack = val.includes('hooks.slack.com');
+    return {
+      url: val,
+      type: isDiscord ? 'discord' : isSlack ? 'slack' : 'generic',
+      onFailureOnly: true
+    };
+  }
+  return val;
+}
+
+/**
  * Loads and resolves SnapDiff configuration.
  */
 export async function loadConfig(cwd = process.cwd(), customPath?: string): Promise<ResolvedSnapDiffConfig> {
@@ -71,7 +90,6 @@ export async function loadConfig(cwd = process.cwd(), customPath?: string): Prom
       const content = fs.readFileSync(configFile, 'utf8');
       userConfig = JSON.parse(content);
     } else {
-      // Dynamic import for TS/JS configs
       try {
         const fileUrl = pathToFileURL(configFile).href;
         const mod = await import(fileUrl);
@@ -88,9 +106,16 @@ export async function loadConfig(cwd = process.cwd(), customPath?: string): Prom
     threshold: userConfig.threshold !== undefined ? parseThreshold(userConfig.threshold) : DEFAULT_CONFIG.threshold,
     diffColor: userConfig.diffColor || DEFAULT_CONFIG.diffColor,
     viewports: resolvedViewports,
+    colorSchemes: userConfig.colorSchemes && userConfig.colorSchemes.length > 0
+      ? userConfig.colorSchemes
+      : DEFAULT_CONFIG.colorSchemes,
     targets: Array.isArray(userConfig.targets) ? userConfig.targets : [],
     outputDir: userConfig.outputDir || DEFAULT_CONFIG.outputDir,
     headless: userConfig.headless ?? DEFAULT_CONFIG.headless,
-    stabilize: userConfig.stabilize ?? DEFAULT_CONFIG.stabilize
+    stabilize: userConfig.stabilize ?? DEFAULT_CONFIG.stabilize,
+    concurrency: userConfig.concurrency && userConfig.concurrency > 0
+      ? userConfig.concurrency
+      : DEFAULT_CONFIG.concurrency,
+    webhook: resolveWebhookConfig(userConfig.webhook)
   };
 }

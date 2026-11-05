@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Smartphone, Tablet, Monitor, Search, CheckCircle2, XCircle, Sparkles } from 'lucide-react';
+import { Smartphone, Tablet, Monitor, Search, CheckCircle2, XCircle, Sparkles, Moon } from 'lucide-react';
 import type { SnapshotRecord } from '../types.js';
 
 interface SnapshotListProps {
@@ -27,7 +27,8 @@ export const SnapshotList: React.FC<SnapshotListProps> = ({
       return (
         snap.targetName.toLowerCase().includes(q) ||
         snap.viewportName.toLowerCase().includes(q) ||
-        snap.url.toLowerCase().includes(q)
+        snap.url.toLowerCase().includes(q) ||
+        (snap.colorScheme && snap.colorScheme.toLowerCase().includes(q))
       );
     }
     return true;
@@ -78,9 +79,18 @@ export const SnapshotList: React.FC<SnapshotListProps> = ({
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-xs text-slate-200 truncate pr-2">
-                    {snap.targetName}
-                  </span>
+                  <div className="flex items-center gap-1.5 truncate pr-2">
+                    <span className="font-semibold text-xs text-slate-200 truncate">
+                      {snap.targetName}
+                    </span>
+                    {snap.colorScheme === 'dark' && (
+                      <span className="flex items-center text-[10px] bg-indigo-950/80 text-indigo-300 px-1 py-0.2 rounded border border-indigo-800/60">
+                        <Moon className="w-2.5 h-2.5 mr-0.5" />
+                        dark
+                      </span>
+                    )}
+                  </div>
+
                   {snap.status === 'passed' && (
                     <div className="flex items-center gap-1 text-[11px] text-emerald-400 font-mono">
                       <CheckCircle2 className="w-3.5 h-3.5" />

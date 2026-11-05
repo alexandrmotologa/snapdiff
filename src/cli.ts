@@ -4,7 +4,7 @@ import path from 'node:path';
 import { Command } from 'commander';
 import open from 'open';
 import pc from 'picocolors';
-import { loadConfig, parseThreshold } from './config.js';
+import { loadConfig, parseThreshold, resolveWebhookConfig } from './config.js';
 import { SnapDiffEngine } from './runner.js';
 import { BaselineStore } from './baseline/store.js';
 import { approveAllSnapshots, approveSnapshot } from './baseline/approver.js';
@@ -13,7 +13,7 @@ import { printTerminalReport } from './reporter/terminal_table.js';
 import { generatePRComment } from './reporter/pr_commenter.js';
 import { saveHTMLReport } from './reporter/html_report.js';
 import { createDemoServer } from './demo/demo_server.js';
-import type { TargetConfig } from './types.js';
+import type { ColorScheme, TargetConfig } from './types.js';
 
 const program = new Command();
 
@@ -45,6 +45,8 @@ program
         tablet: { width: 768, height: 1024, deviceScaleFactor: 2 },
         desktop: { width: 1440, height: 900, deviceScaleFactor: 2 }
       },
+      colorSchemes: ['light'],
+      concurrency: 4,
       targets: [
         {
           name: 'home-page',
@@ -72,25 +74,35 @@ program
   .description('Capture screenshots and save directly as approved baselines')
   .option('-u, --url <url>', 'Target URL to capture')
   .option('-c, --config <path>', 'Path to configuration file')
-  .option('-v, --viewports <items>', 'Comma-separated viewports to capture (e.g. mobile,desktop)')
+  .option('-v, --viewports <items>', 'Comma-separated viewports (e.g. mobile,desktop)')
+  .option('--color-schemes <schemes>', 'Comma-separated color schemes (e.g. light,dark)')
+  .option('--concurrency <number>', 'Number of parallel worker captures', '4')
   .option('--selector <selector>', 'CSS selector of component to capture')
   .action(async (options) => {
     try {
       const config = await loadConfig(process.cwd(), options.config);
+      if (options.concurrency) {
+        config.concurrency = Number.parseInt(options.concurrency, 10);
+      }
 
       let targets: TargetConfig[] | undefined;
+      const colorSchemes = options.colorSchemes
+        ? (options.colorSchemes.split(',').map((s: string) => s.trim()) as ColorScheme[])
+        : undefined;
+
       if (options.url) {
         targets = [
           {
             name: 'target-url',
             url: options.url,
             selector: options.selector,
+            colorSchemes,
             viewports: options.viewports ? options.viewports.split(',').map((s: string) => s.trim()) : undefined
           }
         ];
       }
 
-      console.log(pc.cyan('Capturing baseline snapshots...'));
+      console.log(pc.cyan(`Capturing baseline snapshots (Concurrency: ${config.concurrency})...`));
       const engine = new SnapDiffEngine(config);
       const manifest = await engine.captureBaselines(targets);
 
@@ -112,6 +124,9 @@ program
   .option('-u, --url <url>', 'Test a single URL')
   .option('-c, --config <path>', 'Path to configuration file')
   .option('-v, --viewports <items>', 'Comma-separated viewports')
+  .option('--color-schemes <schemes>', 'Comma-separated color schemes (e.g. light,dark)')
+  .option('--concurrency <number>', 'Number of parallel worker comparisons', '4')
+  .option('--webhook <url>', 'Webhook URL (Slack/Discord) for test result alerts')
   .option('--html <path>', 'Generate standalone HTML report at specified path')
   .option('--json <path>', 'Output JSON results to specified file')
   .option('--update-baseline', 'Automatically update baselines')
@@ -119,23 +134,42 @@ program
     try {
       const config = await loadConfig(process.cwd(), options.config);
       const threshold = options.threshold ? parseThreshold(options.threshold) : config.threshold;
+      if (options.concurrency) {
+        config.concurrency = Number.parseInt(options.concurrency, 10);
+      }
+      if (options.webhook) {
+        config.webhook = resolveWebhookConfig(options.webhook);
+      }
 
       let targets: TargetConfig[] | undefined;
+      const colorSchemes = options.colorSchemes
+        ? (options.colorSchemes.split(',').map((s: string) => s.trim()) as ColorScheme[])
+        : undefined;
+
       if (options.url) {
         targets = [
           {
             name: 'target-url',
             url: options.url,
+            colorSchemes,
             viewports: options.viewports ? options.viewports.split(',').map((s: string) => s.trim()) : undefined
           }
         ];
       }
 
-      console.log(pc.cyan(`Running visual regression tests (Threshold: ${(threshold * 100).toFixed(2)}%)...`));
+      console.log(
+        pc.cyan(
+          `Running visual regression tests (Threshold: ${(threshold * 100).toFixed(2)}%, Concurrency: ${
+            config.concurrency
+          })...`
+        )
+      );
       const engine = new SnapDiffEngine(config);
       const manifest = await engine.runTests({
         threshold,
         targets,
+        colorSchemes,
+        concurrency: config.concurrency,
         updateBaseline: options.updateBaseline
       });
 
@@ -205,11 +239,13 @@ program
   .option('--all', 'Approve all failed/new snapshots in the latest run')
   .option('--target <name>', 'Target name')
   .option('--viewport <name>', 'Viewport name')
+  .option('--dark', 'Approve dark mode baseline instead of light')
   .option('-c, --config <path>', 'Path to configuration file')
   .action(async (options) => {
     try {
       const config = await loadConfig(process.cwd(), options.config);
       const store = new BaselineStore(config.outputDir);
+      const colorScheme: ColorScheme = options.dark ? 'dark' : 'light';
 
       if (options.all) {
         const res = await approveAllSnapshots(store);
@@ -226,10 +262,46 @@ program
         process.exit(1);
       }
 
-      await approveSnapshot(store, options.target, options.viewport);
-      console.log(pc.green(`✓ Approved baseline for ${options.target} [${options.viewport}]`));
+      await approveSnapshot(store, options.target, options.viewport, colorScheme);
+      console.log(pc.green(`✓ Approved baseline for ${options.target} [${options.viewport}:${colorScheme}]`));
     } catch (err) {
       console.error(pc.red(`Approval failed: ${(err as Error).message}`));
+      process.exit(1);
+    }
+  });
+
+/**
+ * Command: rollback
+ */
+program
+  .command('rollback')
+  .description('Rollback a baseline snapshot to a previous historical version')
+  .requiredOption('--target <name>', 'Target name')
+  .requiredOption('--viewport <name>', 'Viewport name')
+  .option('--dark', 'Rollback dark mode baseline')
+  .option('-c, --config <path>', 'Path to configuration file')
+  .action(async (options) => {
+    try {
+      const config = await loadConfig(process.cwd(), options.config);
+      const store = new BaselineStore(config.outputDir);
+      const colorScheme: ColorScheme = options.dark ? 'dark' : 'light';
+
+      const history = await store.listHistory(options.target, options.viewport, colorScheme);
+      if (history.length === 0) {
+        console.log(pc.yellow(`No historical versions found for ${options.target} [${options.viewport}:${colorScheme}]`));
+        return;
+      }
+
+      // Roll back to the most recent historical baseline
+      const latestHistory = history[0];
+      await store.rollbackBaseline(options.target, options.viewport, latestHistory.filePath, colorScheme);
+      console.log(
+        pc.green(
+          `✓ Successfully rolled back ${options.target} [${options.viewport}:${colorScheme}] to version from ${latestHistory.timestamp}`
+        )
+      );
+    } catch (err) {
+      console.error(pc.red(`Rollback failed: ${(err as Error).message}`));
       process.exit(1);
     }
   });

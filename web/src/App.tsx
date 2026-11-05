@@ -1,12 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSnapshots } from './hooks/useSnapshots.js';
 import { Header } from './components/Header.js';
 import { SnapshotList } from './components/SnapshotList.js';
 import { SlidingWiper } from './components/SlidingWiper.js';
 import { OnionSkinViewer } from './components/OnionSkinViewer.js';
+import { BlinkComparator } from './components/BlinkComparator.js';
 import { SideBySide } from './components/SideBySide.js';
 import { DiffLayer } from './components/DiffLayer.js';
 import { InspectionBar } from './components/InspectionBar.js';
+import { MaskDrawerModal } from './components/MaskDrawerModal.js';
+import { HistoryDrawerModal } from './components/HistoryDrawerModal.js';
 import type { ViewMode } from './types.js';
 
 export const App: React.FC = () => {
@@ -18,13 +21,21 @@ export const App: React.FC = () => {
     error,
     approve,
     approveAll,
-    runTests
+    runTests,
+    fetchHistory,
+    rollback,
+    addMask
   } = useSnapshots();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'failed' | 'passed' | 'new'>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('wiper');
   const [zoom, setZoom] = useState<number>(1);
+  const [highlightBox, setHighlightBox] = useState<boolean>(true);
+
+  // Modals state
+  const [isMaskModalOpen, setIsMaskModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
   const snapshots = manifest?.snapshots ?? [];
 
@@ -42,7 +53,6 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (filteredSnapshots.length > 0) {
       if (!selectedId || !filteredSnapshots.some((s) => s.id === selectedId)) {
-        // Prefer failed snapshot first if available
         const failedOne = filteredSnapshots.find((s) => s.status === 'failed');
         setSelectedId(failedOne ? failedOne.id : filteredSnapshots[0].id);
       }
@@ -53,10 +63,30 @@ export const App: React.FC = () => {
 
   const selectedSnapshot = snapshots.find((s) => s.id === selectedId);
 
+  // Jump to diff region with smooth scroll and zoom
+  const handleJumpToDiff = useCallback(() => {
+    if (!selectedSnapshot?.metrics?.boundingBox) return;
+    const box = selectedSnapshot.metrics.boundingBox;
+    setZoom(1.6);
+    setHighlightBox(true);
+
+    setTimeout(() => {
+      const container = document.getElementById('canvas-scroll-container');
+      if (container) {
+        const centerY = (box.minY + box.maxY) / 2;
+        const centerX = (box.minX + box.maxX) / 2;
+        container.scrollTo({
+          top: centerY * 1.6 - container.clientHeight / 2,
+          left: centerX * 1.6 - container.clientWidth / 2,
+          behavior: 'smooth'
+        });
+      }
+    }, 150);
+  }, [selectedSnapshot]);
+
   // Keyboard navigation shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Do not trigger shortcuts when typing in inputs
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
         return;
       }
@@ -65,16 +95,23 @@ export const App: React.FC = () => {
       else if (e.key === '2') setViewMode('onion');
       else if (e.key === '3') setViewMode('side-by-side');
       else if (e.key === '4') setViewMode('diff');
+      else if (e.key === '5') setViewMode('blink');
+      else if (e.key === 'h' || e.key === 'H') setHighlightBox((prev) => !prev);
+      else if (e.key === 'j' || e.key === 'J') handleJumpToDiff();
       else if (e.key === 'a' || e.key === 'A') {
         if (selectedSnapshot && selectedSnapshot.status !== 'passed') {
-          approve(selectedSnapshot.targetName, selectedSnapshot.viewportName);
+          approve(
+            selectedSnapshot.targetName,
+            selectedSnapshot.viewportName,
+            selectedSnapshot.colorScheme
+          );
         }
-      } else if (e.key === 'ArrowDown' || e.key === 'j') {
+      } else if (e.key === 'ArrowDown') {
         const idx = filteredSnapshots.findIndex((s) => s.id === selectedId);
         if (idx !== -1 && idx < filteredSnapshots.length - 1) {
           setSelectedId(filteredSnapshots[idx + 1].id);
         }
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+      } else if (e.key === 'ArrowUp') {
         const idx = filteredSnapshots.findIndex((s) => s.id === selectedId);
         if (idx > 0) {
           setSelectedId(filteredSnapshots[idx - 1].id);
@@ -84,16 +121,17 @@ export const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filteredSnapshots, selectedId, selectedSnapshot, approve]);
+  }, [filteredSnapshots, selectedId, selectedSnapshot, approve, handleJumpToDiff]);
 
+  const colorSchemeParam = selectedSnapshot ? `?colorScheme=${selectedSnapshot.colorScheme}` : '';
   const baselineUrl = selectedSnapshot
-    ? `/api/images/baseline/${selectedSnapshot.targetName}/${selectedSnapshot.viewportName}`
+    ? `/api/images/baseline/${selectedSnapshot.targetName}/${selectedSnapshot.viewportName}${colorSchemeParam}`
     : '';
   const currentUrl = selectedSnapshot
-    ? `/api/images/current/${selectedSnapshot.targetName}/${selectedSnapshot.viewportName}`
+    ? `/api/images/current/${selectedSnapshot.targetName}/${selectedSnapshot.viewportName}${colorSchemeParam}`
     : '';
   const diffUrl = selectedSnapshot
-    ? `/api/images/diff/${selectedSnapshot.targetName}/${selectedSnapshot.viewportName}`
+    ? `/api/images/diff/${selectedSnapshot.targetName}/${selectedSnapshot.viewportName}${colorSchemeParam}`
     : '';
 
   return (
@@ -152,6 +190,8 @@ export const App: React.FC = () => {
                     baselineUrl={baselineUrl}
                     currentUrl={currentUrl}
                     zoom={zoom}
+                    highlightBox={highlightBox}
+                    boundingBox={selectedSnapshot.metrics?.boundingBox}
                   />
                 )}
                 {viewMode === 'onion' && (
@@ -159,6 +199,17 @@ export const App: React.FC = () => {
                     baselineUrl={baselineUrl}
                     currentUrl={currentUrl}
                     zoom={zoom}
+                    highlightBox={highlightBox}
+                    boundingBox={selectedSnapshot.metrics?.boundingBox}
+                  />
+                )}
+                {viewMode === 'blink' && (
+                  <BlinkComparator
+                    baselineUrl={baselineUrl}
+                    currentUrl={currentUrl}
+                    zoom={zoom}
+                    highlightBox={highlightBox}
+                    boundingBox={selectedSnapshot.metrics?.boundingBox}
                   />
                 )}
                 {viewMode === 'side-by-side' && (
@@ -166,10 +217,17 @@ export const App: React.FC = () => {
                     baselineUrl={baselineUrl}
                     currentUrl={currentUrl}
                     zoom={zoom}
+                    highlightBox={highlightBox}
+                    boundingBox={selectedSnapshot.metrics?.boundingBox}
                   />
                 )}
                 {viewMode === 'diff' && (
-                  <DiffLayer diffUrl={diffUrl} zoom={zoom} />
+                  <DiffLayer
+                    diffUrl={diffUrl}
+                    zoom={zoom}
+                    highlightBox={highlightBox}
+                    boundingBox={selectedSnapshot.metrics?.boundingBox}
+                  />
                 )}
               </div>
 
@@ -180,8 +238,17 @@ export const App: React.FC = () => {
                 onViewModeChange={setViewMode}
                 zoom={zoom}
                 onZoomChange={setZoom}
+                highlightBox={highlightBox}
+                onToggleHighlightBox={() => setHighlightBox((prev) => !prev)}
+                onJumpToDiff={handleJumpToDiff}
+                onOpenMaskModal={() => setIsMaskModalOpen(true)}
+                onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
                 onApprove={() =>
-                  approve(selectedSnapshot.targetName, selectedSnapshot.viewportName)
+                  approve(
+                    selectedSnapshot.targetName,
+                    selectedSnapshot.viewportName,
+                    selectedSnapshot.colorScheme
+                  )
                 }
                 approving={approving}
               />
@@ -189,6 +256,29 @@ export const App: React.FC = () => {
           )}
         </main>
       </div>
+
+      {/* Dynamic Mask Modal */}
+      {selectedSnapshot && (
+        <MaskDrawerModal
+          isOpen={isMaskModalOpen}
+          targetName={selectedSnapshot.targetName}
+          onClose={() => setIsMaskModalOpen(false)}
+          onSaveMask={addMask}
+        />
+      )}
+
+      {/* History and Rollback Modal */}
+      {selectedSnapshot && (
+        <HistoryDrawerModal
+          isOpen={isHistoryModalOpen}
+          targetName={selectedSnapshot.targetName}
+          viewportName={selectedSnapshot.viewportName}
+          colorScheme={selectedSnapshot.colorScheme}
+          onClose={() => setIsHistoryModalOpen(false)}
+          fetchHistory={fetchHistory}
+          onRollback={rollback}
+        />
+      )}
     </div>
   );
 };
