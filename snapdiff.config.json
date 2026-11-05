@@ -1,0 +1,42 @@
+{
+  "$schema": "https://raw.githubusercontent.com/alexandrmotologa/snapdiff/main/schema.json",
+  "threshold": 0.002,
+  "diffColor": [
+    255,
+    0,
+    255
+  ],
+  "viewports": {
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "deviceScaleFactor": 2
+    },
+    "tablet": {
+      "width": 768,
+      "height": 1024,
+      "deviceScaleFactor": 2
+    },
+    "desktop": {
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 2
+    }
+  },
+  "targets": [
+    {
+      "name": "home-page",
+      "url": "http://localhost:3000",
+      "masks": [
+        ".timestamp",
+        "[data-dynamic]"
+      ],
+      "wait": {
+        "networkIdle": true,
+        "fontsReady": true,
+        "delay": 200
+      }
+    }
+  ],
+  "outputDir": ".snapdiff"
+}
